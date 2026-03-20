@@ -1,0 +1,17 @@
+[project]
+name = "autoresearch-mamba"
+version = "0.1.0"
+description = "Autoresearch for Mamba SSM on Apple Silicon (MLX)"
+requires-python = ">=3.10"
+dependencies = [
+    "mlx>=0.22.0",
+    "numpy",
+    "pyarrow",
+    "rustbpe",
+    "tiktoken",
+    "requests",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.backends._legacy:_Backend"
