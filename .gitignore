@@ -206,3 +206,4 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 mlx_preset.local.json
+mlx_mamba_3_preset.local.json

@@ -2,59 +2,58 @@
 
 ![teaser](progress.png)
 
-Karpathy-style autoresearch for a Mamba2 language model.
+Karpathy-style autoresearch for Mamba language models on Apple Silicon with MLX.
 
-The repository keeps the same basic loop as `autoresearch-karpathy`: a fixed evaluator, a fixed 5-minute training budget, and a single training file that the agent is allowed to mutate in search of a lower `val_bpb`.
+The current MLX path is architecture-aware:
 
-For background on the Mamba architecture itself, see Wikipedia: https://en.wikipedia.org/wiki/Mamba_(deep_learning_architecture)
+- `mamba-2`
+- `mamba-3`
 
-## Roadmap
+The repo keeps the same high-level loop as `autoresearch-karpathy`: a fixed evaluator, a fixed 5 minute training budget, and one editable training surface that an agent can mutate to lower `val_bpb`.
 
-- [ ] a Mamba-3 implementation is planned soon
-- [ ] a hybrid Mamba-Transformer MoE direction is planned soon as a separate future architecture track
-- [ ] this repository currently remains focused on the Mamba-2-style autoresearch target
-- [ ] for background on Mamba-3, see Together AI's March 17, 2026 overview: https://www.together.ai/blog/mamba-3
-- [ ] for background on an open hybrid Mamba-Transformer MoE design, see NVIDIA's Nemotron 3 Super overview from March 11, 2026: https://developer.nvidia.com/blog/introducing-nemotron-3-super-an-open-hybrid-mamba-transformer-moe-for-agentic-reasoning/
+## Status
+
+- The canonical MLX path is now `prepare_mlx_mamba_3.py` + `train_mamba_3_mlx.py`
+- `train_mamba_3_mlx.py` supports both `mamba-2` and `mamba-3`
+- `train_mamba_mlx.py` remains as the original Mamba-2 MLX script
+- The Mamba-3 MLX path is active work and is being tightened against the upstream reference implementation
+
+For background on Mamba-3, see Together AI's March 17, 2026 overview: https://www.together.ai/blog/mamba-3
 
 ## Goal
 
-The target is simple:
+The objective is simple:
 
 - minimize `val_bpb`
 - under a fixed `TIME_BUDGET = 300` seconds
 - without changing the evaluation harness for the active run
 
-For the MLX path, the canonical fixed evaluator lives in `prepare_mlx.py`, and the editable experiment surface lives in `train_mamba_mlx.py`.
+## Canonical MLX Path
 
-## Canonical Path
+Use these files for new MLX autoresearch runs:
 
-The intended primary workflow is Apple Silicon + MLX:
+- `prepare_mlx_mamba_3.py`: fixed prep entry point for `mamba-2` and `mamba-3`
+- `train_mamba_3_mlx.py`: editable architecture-aware MLX training script
+- `program.md`: autonomous keep/discard loop instructions
 
-- `prepare_mlx.py`: fixed data prep, tokenizer, dataloader, evaluator
-- `train_mamba_mlx.py`: editable Mamba2 training script
-- `program.md`: instructions for an autonomous agent running the autoresearch loop
+Additional reference files remain in the repo:
 
-The PyTorch/CUDA files are included as a secondary/reference path:
-
+- `prepare_mlx.py`
+- `train_mamba_mlx.py`
 - `prepare.py`
 - `train_mamba.py`
 
 ## Repository Layout
 
-- `program.md`: autoresearch instructions and keep/discard loop
-- `prepare_mlx.py`: fixed MLX prep/eval harness
-- `train_mamba_mlx.py`: MLX Mamba2 experiment target
-- `prepare.py`: fixed PyTorch prep/eval harness
-- `train_mamba.py`: PyTorch Mamba2 experiment target
-- `analysis.ipynb`: notebook for analyzing `results.tsv` and plotting progress
+- `program.md`: autoresearch instructions and experiment loop
+- `prepare_mlx_mamba_3.py`: fixed architecture-aware MLX prep entry point
+- `train_mamba_3_mlx.py`: editable architecture-aware MLX training surface
+- `prepare_mlx.py`: shared tokenizer, dataloader, evaluator
+- `train_mamba_mlx.py`: original MLX Mamba-2 training script
+- `analysis.ipynb`: notebook for analyzing `results.tsv`
 - `pyproject.toml`: Python dependencies
-- `mlx_preset.local.json`: optional local MLX override file, ignored by git
 
 ## Install
-
-This repo uses a minimal `pyproject.toml`.
-
-Example:
 
 ```bash
 python3 -m venv .venv
@@ -64,123 +63,137 @@ pip install -e .
 
 The MLX path requires Apple Silicon and a working MLX installation.
 
-The optional analysis notebook uses `pandas` and `matplotlib`, which are not part of the minimal core dependency set in `pyproject.toml`.
-
-## Platform Support
-
-The canonical path in this repo is Apple Silicon + MLX.
-
-- `Local preset`: validated on Apple Silicon with tighter memory budgets, including an `M1 Pro` using `mlx_preset.local.json`
-- `Full tracked MLX baseline`: intended for a higher-memory Apple Silicon machine; the practical target is roughly an `M4 Max` class system with `128 GB` unified memory, or something with similar headroom
-- `PyTorch path`: secondary/reference path for CUDA systems via `prepare.py` and `train_mamba.py`
-
-If you do not have the memory budget for the full MLX baseline, use the local preset and keep that preset fixed for the entire run.
-
-## Data And Cache
-
-Data and tokenizer artifacts are stored in:
-
-```bash
-~/.cache/autoresearch/
-```
-
-This includes:
-
-- downloaded data shards
-- trained tokenizer
-- `token_bytes.npy` for BPB evaluation
-
 ## Quick Start
 
-**Requirements:** Python `3.10+`, Apple Silicon, and a working MLX install for the canonical path.
-
-### Full MLX Baseline
-
-Prepare data:
+### Mamba-3 Full Baseline
 
 ```bash
-python3 prepare_mlx.py
+python3 prepare_mlx_mamba_3.py
+python3 train_mamba_3_mlx.py
 ```
 
-Run the baseline:
+By default, the architecture-aware path targets `mamba-3`.
+
+### Mamba-3 With A Local Preset
 
 ```bash
-python3 train_mamba_mlx.py
+AUTORESEARCH_MLX_PRESET_FILE=/path/to/your-local-mamba-3-preset.json python3 prepare_mlx_mamba_3.py
+AUTORESEARCH_MLX_PRESET_FILE=/path/to/your-local-mamba-3-preset.json python3 train_mamba_3_mlx.py
 ```
 
-### Local Apple Silicon Preset
+If the preset carries `ARCHITECTURE=mamba-3`, the prep wrapper can infer the architecture directly from the preset file.
 
-For smaller local testing, use the optional preset file:
+### Mamba-2 From The New MLX Path
 
 ```bash
-AUTORESEARCH_MLX_PRESET_FILE=mlx_preset.local.json python3 prepare_mlx.py
-AUTORESEARCH_MLX_PRESET_FILE=mlx_preset.local.json python3 train_mamba_mlx.py
+AUTORESEARCH_MLX_ARCHITECTURE=mamba-2 python3 prepare_mlx_mamba_3.py
+AUTORESEARCH_MLX_ARCHITECTURE=mamba-2 python3 train_mamba_3_mlx.py
 ```
 
-Important:
+### Mamba-2 With A Local Preset
 
-- `mlx_preset.local.json` is for local testing
-- it is ignored by git
-- if you use it for a run, treat it as fixed infrastructure for that entire run
-- do not compare `val_bpb` from the local preset directly against the full preset, because the evaluation setup differs
+```bash
+AUTORESEARCH_MLX_ARCHITECTURE=mamba-2 AUTORESEARCH_MLX_PRESET_FILE=/path/to/your-local-mamba-2-preset.json python3 prepare_mlx_mamba_3.py
+AUTORESEARCH_MLX_ARCHITECTURE=mamba-2 AUTORESEARCH_MLX_PRESET_FILE=/path/to/your-local-mamba-2-preset.json python3 train_mamba_3_mlx.py
+```
 
-If the commands above work, your setup is working and you can move into autonomous research mode.
+## Presets
+
+The MLX path has two built-in default presets from the scripts themselves:
+
+- default Mamba-3 preset: run `prepare_mlx_mamba_3.py` and `train_mamba_3_mlx.py` without `AUTORESEARCH_MLX_PRESET_FILE`; this is the default architecture-aware setup
+- default Mamba-2 preset: set `AUTORESEARCH_MLX_ARCHITECTURE=mamba-2` without `AUTORESEARCH_MLX_PRESET_FILE`; this uses the built-in Mamba-2 defaults in the same path
+
+Local presets are fixed infrastructure for a run:
+
+- do not edit the active preset after the run starts
+- do not mix results from different presets in the same `results.tsv`
+- do not compare `val_bpb` directly across different evaluation setups
+- point `AUTORESEARCH_MLX_PRESET_FILE` at the local preset you want to use for the full run
+
+Example local Mamba-3 preset:
+
+```json
+{
+  "prepare_mlx": {
+    "MAX_SEQ_LEN": 512,
+    "EVAL_TOKENS": 524288,
+    "DEFAULT_NUM_SHARDS": 4
+  },
+  "train_mamba_3_mlx": {
+    "ARCHITECTURE": "mamba-3",
+    "DEPTH": 4,
+    "D_MODEL": 384,
+    "D_STATE": 32,
+    "HEADDIM": 32,
+    "TOTAL_BATCH_SIZE": 16384,
+    "DEVICE_BATCH_SIZE": 4,
+    "ROPE_FRACTION": 0.5,
+    "DT_MIN": 0.001,
+    "DT_MAX": 0.1,
+    "DT_INIT_FLOOR": 0.0001,
+    "A_FLOOR": 0.0001,
+    "IS_OUTPROJ_NORM": false,
+    "IS_MIMO": false,
+    "MIMO_RANK": 4
+  }
+}
+```
+
+Example local Mamba-2 preset:
+
+```json
+{
+  "prepare_mlx": {
+    "MAX_SEQ_LEN": 512,
+    "EVAL_TOKENS": 524288,
+    "DEFAULT_NUM_SHARDS": 4
+  },
+  "train_mamba_3_mlx": {
+    "ARCHITECTURE": "mamba-2",
+    "DEPTH": 6,
+    "D_MODEL": 512,
+    "D_STATE": 64,
+    "D_CONV": 4,
+    "HEADDIM": 64,
+    "TOTAL_BATCH_SIZE": 16384,
+    "DEVICE_BATCH_SIZE": 4
+  }
+}
+```
 
 ## Running The Agent
 
-Open your coding agent in this repo, point it at `program.md`, and let it run the keep/discard loop.
+Open your coding agent in this repo, point it at `program.md`, and keep the architecture and preset fixed for the full run.
 
 Example prompt:
 
 ```text
-Hi, read program.md and start the autoresearch setup on the MLX path. Use the active preset as fixed infrastructure, run one experiment at a time, log results to results.tsv, and keep or discard changes based on val_bpb.
+Read program.md and start the MLX autoresearch loop with AUTORESEARCH_MLX_PRESET_FILE set to your local Mamba-3 preset. Treat the preset and architecture as fixed infrastructure, log results to results.tsv, and keep or discard changes based on val_bpb.
 ```
 
-The intended flow is:
+## What Changes During A Run
 
-- the human controls `program.md`
-- the agent edits `train_mamba_mlx.py`
-- `prepare_mlx.py` stays fixed for the active run
-- `val_bpb` decides whether an experiment is kept or discarded
+The intended editable file is:
 
-For local testing, be explicit about the preset in the prompt:
-
-```text
-Use AUTORESEARCH_MLX_PRESET_FILE=mlx_preset.local.json for this entire run. Do not switch presets mid-run and do not mix these results with the full baseline results.tsv history.
-```
-
-## What The Agent Is Allowed To Change
-
-During an autoresearch run, the intended editable file is:
-
-- `train_mamba_mlx.py`
+- `train_mamba_3_mlx.py`
 
 Typical experiment directions:
 
-- model size: depth, width, state dimension, head dimension
-- SSM structure: `d_state`, `d_conv`, `expand`, `ngroups`, SSD chunk size
-- training setup: batch size, grad accumulation, LR schedule, Adam betas, weight decay
-- initialization: `dt` range, `A` range, output projection scaling
-- optional architectural ablations: MLP branch, residual scaling, activation choices, tied vs untied output weights
+- model depth, width, `d_state`, `headdim`, `ngroups`
+- chunk size and gradient accumulation
+- optimizer, learning rate schedule, weight decay, Adam betas
+- Mamba-2-specific settings like `d_conv`
+- Mamba-3-specific settings like `rope_fraction`, `dt` range, `a_floor`, `is_outproj_norm`, `is_mimo`, and `mimo_rank`
 
-The evaluator and run budget should stay fixed for the active run.
-
-## What Stays Fixed
-
-For a given run:
-
-- `prepare_mlx.py` should be treated as read-only
-- the active preset choice should stay fixed
-- `evaluate_bpb` is the ground-truth metric
-- `TIME_BUDGET` stays at 300 seconds
-
-The working rule is: change the training recipe, not the benchmark definition.
+The evaluation harness and active preset stay fixed for the run.
 
 ## Output
 
-A successful run prints a summary including:
+A successful run prints:
 
 ```text
+architecture
 val_bpb
 training_seconds
 total_seconds
@@ -191,38 +204,3 @@ depth
 ```
 
 Lower `val_bpb` is better.
-
-## Results Logging
-
-`program.md` uses a simple keep/discard loop:
-
-- run an experiment
-- read `val_bpb`
-- keep the commit if `val_bpb` improved
-- otherwise discard/revert it
-- log the result in `results.tsv`
-
-Do not mix full-preset and local-preset runs in the same results log.
-
-## Current Status
-
-The repository is set up to evaluate the same kind of agent capability as Karpathy's autoresearch, but on a Mamba2-style architecture instead of a GPT-style architecture.
-
-Current state:
-
-- MLX path is the canonical autoresearch path
-- local MLX preset has been validated end-to-end on Apple Silicon
-- PyTorch path is present as a secondary/reference implementation
-- the repo is suitable for fixed-budget `val_bpb` optimization experiments on Mamba
-- the implemented architecture target is Mamba-2-style, not Mamba-3
-
-## Notes
-
-- This is a compact research harness, not the full upstream `mamba_ssm` codebase
-- the model follows the Mamba-2 / SSD design used by the `mamba2.py` reference, not the separate Mamba-3 codepaths
-- as of 2026, the broader Mamba family is prominent in long-sequence, audio, vision, and bioinformatics settings, and remains attractive for low-latency inference-heavy systems
-- Mamba-3 itself has already been released as an open-source SSM architecture and is starting to be benchmarked against Transformer baselines, even though this repository does not implement it yet
-- the objective is not to reproduce every upstream runtime detail
-- the objective is to create a clean autoresearch target for Mamba under a fixed evaluator and fixed budget
-
-For autonomous experimentation instructions, read `program.md`.
