@@ -1,4 +1,4 @@
-# Autoresearch: Mamba-2 / Mamba-3 (MLX)
+# Autoresearch: Mamba-2 / Mamba-3 / Hybrid (MLX)
 
 This repo runs Karpathy-style autoresearch on Apple Silicon with a fixed MLX evaluator and an editable training script.
 
@@ -6,13 +6,15 @@ For the current MLX path, the active architecture for a run is fixed by `AUTORES
 
 - `mamba-2`
 - `mamba-3`
+- `hybrid` — Nemotron-H style hybrid Mamba-Transformer MoE
 
 The architecture-aware MLX entry points are:
 
-- `prepare_mlx_mamba_3.py`
-- `train_mamba_3_mlx.py`
+- `prepare_mlx_mamba_3.py` — data prep for pure Mamba runs
+- `train_mamba_3_mlx.py` — pure Mamba-2 / Mamba-3 training
+- `train_hybrid_moe_mlx.py` — hybrid Mamba-Transformer MoE training
 
-`prepare_mlx.py` and `train_mamba_mlx.py` remain useful legacy references, but new MLX autoresearch runs should use the architecture-aware pair above.
+`prepare_mlx.py` and `train_mamba_mlx.py` remain useful legacy references. The hybrid script shares the same data/tokenizer/evaluator from `prepare_mlx.py` — no separate prep script is needed.
 
 ## Setup
 
@@ -22,13 +24,18 @@ To set up a new run, work with the user to:
 2. **Create the branch**: `git checkout -b autoresearch/<tag>` from current main.
 3. **Choose the fixed infrastructure**: lock the architecture and preset before the first baseline.
 4. **Read the in-scope files**:
-   - `prepare_mlx_mamba_3.py` — fixed prep entry point. Do not modify during a run.
-   - `train_mamba_3_mlx.py` — editable architecture-aware training script.
-   - `prepare_mlx.py` — shared tokenizer, dataloader, and BPB evaluator.
+   - For pure Mamba runs:
+     - `prepare_mlx_mamba_3.py` — fixed prep entry point. Do not modify during a run.
+     - `train_mamba_3_mlx.py` — editable architecture-aware training script.
+   - For hybrid Mamba-Transformer MoE runs:
+     - `train_hybrid_moe_mlx.py` — editable hybrid training script.
+   - Shared:
+     - `prepare_mlx.py` — shared tokenizer, dataloader, and BPB evaluator.
 5. **Verify data exists**: check `~/.cache/autoresearch/`. If data or tokenizer artifacts are missing, run exactly one prep command and keep the same architecture/preset for the entire run:
    - Mamba-3 full baseline: `python prepare_mlx_mamba_3.py`
    - Mamba-3 local preset: `AUTORESEARCH_MLX_PRESET_FILE=mlx_mamba_3_preset.local.json python prepare_mlx_mamba_3.py`
    - Mamba-2 from the new path: `AUTORESEARCH_MLX_ARCHITECTURE=mamba-2 python prepare_mlx_mamba_3.py`
+   - Hybrid local preset: `AUTORESEARCH_MLX_PRESET_FILE=mlx_hybrid_preset.local.json python prepare_mlx.py`
 6. **Initialize `results.tsv`** with only the header row. Do not mix architectures or preset/evaluation setups in the same log.
 7. **Confirm and start** once the setup is coherent.
 
@@ -39,14 +46,16 @@ Each experiment runs on Apple Silicon with a fixed **5 minute** training budget.
 - Mamba-3 full baseline: `python train_mamba_3_mlx.py`
 - Mamba-3 local preset: `AUTORESEARCH_MLX_PRESET_FILE=mlx_mamba_3_preset.local.json python train_mamba_3_mlx.py`
 - Mamba-2 from the new path: `AUTORESEARCH_MLX_ARCHITECTURE=mamba-2 python train_mamba_3_mlx.py`
+- Hybrid local preset: `AUTORESEARCH_MLX_PRESET_FILE=mlx_hybrid_preset.local.json python train_hybrid_moe_mlx.py`
 
-`mlx_mamba_3_preset.local.json` is the dedicated local Mamba-3 preset. `mlx_preset.local.json` remains available for older or legacy local MLX runs. Whichever preset you pick becomes fixed infrastructure for that run. Do not edit it mid-run, and do not compare `val_bpb` across different preset/evaluation setups.
+`mlx_mamba_3_preset.local.json` is the dedicated local Mamba-3 preset. `mlx_hybrid_preset.local.json` is the dedicated local hybrid preset. `mlx_preset.local.json` remains available for older or legacy local MLX runs. Whichever preset you pick becomes fixed infrastructure for that run. Do not edit it mid-run, and do not compare `val_bpb` across different preset/evaluation setups.
 
-The architecture choice is also fixed infrastructure. Do not switch between `mamba-2` and `mamba-3` inside the same branch or `results.tsv` history.
+The architecture choice is also fixed infrastructure. Do not switch between `mamba-2`, `mamba-3`, and `hybrid` inside the same branch or `results.tsv` history.
 
 **What you CAN do:**
-- Modify `train_mamba_3_mlx.py`. It is the only intended experiment surface during the loop. It supports both `mamba-2` and `mamba-3`.
-- Tune model size, optimizer, schedule, state dimensions, chunking, grouping, MLP usage, and Mamba-3-specific hyperparameters.
+- For pure Mamba runs: modify `train_mamba_3_mlx.py`. It supports both `mamba-2` and `mamba-3`.
+- For hybrid runs: modify `train_hybrid_moe_mlx.py`. It supports `mamba-2` and `mamba-3` as the SSM layer type within the hybrid pattern.
+- Tune model size, optimizer, schedule, state dimensions, chunking, grouping, MLP usage, and architecture-specific hyperparameters.
 
 **What you CANNOT do:**
 - Modify `prepare_mlx_mamba_3.py` or `prepare_mlx.py` during an active run.
@@ -62,7 +71,7 @@ A completed run prints a summary like this:
 
 ```text
 ---
-architecture:     <mamba-2|mamba-3>
+architecture:     <mamba-2|mamba-3|hybrid>
 val_bpb:          <float>
 training_seconds: <float>
 total_seconds:    <float>
@@ -70,6 +79,14 @@ total_tokens_M:   <float>
 num_steps:        <int>
 num_params_M:     <float>
 depth:            <int>
+```
+
+Hybrid runs include additional fields:
+
+```text
+hybrid_pattern:       <str>       # e.g. ME*EM
+mamba_type:           <str>       # mamba-2 or mamba-3
+num_active_params_M:  <float>     # active params per token (excludes inactive MoE experts)
 ```
 
 Useful extraction commands:
@@ -100,12 +117,15 @@ Do not mix architectures or preset/evaluation setups in the same results log.
 Once setup is complete, the loop is:
 
 1. Check the current branch and commit.
-2. Edit `train_mamba_3_mlx.py` with one experimental idea.
-3. `git add train_mamba_3_mlx.py && git commit -m "experiment: <description>"`
+2. Edit the training script with one experimental idea:
+   - Pure Mamba: `train_mamba_3_mlx.py`
+   - Hybrid: `train_hybrid_moe_mlx.py`
+3. `git add <training_script> && git commit -m "experiment: <description>"`
 4. Run the same command shape used for the baseline and redirect output to `run.log`.
    - `python train_mamba_3_mlx.py > run.log 2>&1`
    - `AUTORESEARCH_MLX_PRESET_FILE=mlx_mamba_3_preset.local.json python train_mamba_3_mlx.py > run.log 2>&1`
    - `AUTORESEARCH_MLX_ARCHITECTURE=mamba-2 python train_mamba_3_mlx.py > run.log 2>&1`
+   - `AUTORESEARCH_MLX_PRESET_FILE=mlx_hybrid_preset.local.json python train_hybrid_moe_mlx.py > run.log 2>&1`
 5. Read the result with `grep "^val_bpb:" run.log`.
 6. If no metric is printed, inspect `tail -n 50 run.log`, classify the run as a crash, and either fix the bug or revert the broken idea.
 7. Append the result to `results.tsv`.
@@ -136,6 +156,16 @@ If a run exceeds 10 minutes total, kill it and treat it as a failure.
 - `B/C` norm and bias behavior
 - `is_outproj_norm`
 - `is_mimo` and `mimo_rank`
+
+### Hybrid (Nemotron-H style)
+- `HYBRID_PATTERN` — layer composition (e.g. `ME*EM`, `MEM*EME`, `M-M*-M`)
+- `MAMBA_TYPE` — SSM type for M layers (`mamba-2` or `mamba-3`)
+- `NUM_EXPERTS`, `TOP_K` — MoE sparsity
+- `EXPERT_HIDDEN`, `SHARED_EXPERT_HIDDEN` — expert FFN sizing
+- `AUX_LOSS_COEFF` — load-balancing loss weight
+- `NUM_ATTENTION_HEADS`, `NUM_KV_HEADS`, `ATTN_HEAD_DIM` — attention config
+- `ROPE_THETA` — RoPE base frequency for attention layers
+- ratio of M/E/*/- layers in the pattern
 
 ## Never Stop
 
